@@ -1,0 +1,181 @@
+name: 'PRGuard'
+description: 'AI-powered PR quality guardian - detect and block low-quality & AI slop PRs'
+author: '1137043480'
+
+branding:
+  icon: 'shield'
+  color: 'blue'
+
+inputs:
+  github-token:
+    description: 'GitHub token for API access'
+    required: true
+    default: ${{ github.token }}
+  
+  # === Mode ===
+  mode:
+    description: 'Operating mode: "rules" (free, no AI) or "ai" (rules + AI analysis, requires API key)'
+    required: false
+    default: 'rules'
+
+  # === AI Configuration ===
+  ai-provider:
+    description: 'AI provider: "openai", "ollama", or "anthropic"'
+    required: false
+    default: 'openai'
+  ai-api-key:
+    description: 'API key for AI provider (user provides their own key)'
+    required: false
+  ai-base-url:
+    description: 'Custom API base URL (for Ollama or compatible APIs)'
+    required: false
+  ai-model:
+    description: 'AI model to use'
+    required: false
+    default: 'gpt-4o-mini'
+
+  # === Scoring Thresholds ===
+  max-failures:
+    description: 'Maximum rule check failures before action is taken'
+    required: false
+    default: '4'
+  min-quality-score:
+    description: 'Minimum quality score (0-100) to pass'
+    required: false
+    default: '40'
+
+  # === PR Title Checks ===
+  require-conventional-title:
+    description: 'Require conventional commit style PR title'
+    required: false
+    default: 'true'
+  blocked-title-patterns:
+    description: 'Comma-separated title patterns to block (regex)'
+    required: false
+    default: 'Update README.md,Update .gitignore,Minor fixes,Quick fix'
+
+  # === PR Description Checks ===
+  require-description:
+    description: 'Require PR description'
+    required: false
+    default: 'true'
+  min-description-length:
+    description: 'Minimum PR description length'
+    required: false
+    default: '30'
+  max-description-length:
+    description: 'Maximum PR description length (AI slop signal)'
+    required: false
+    default: '5000'
+  require-pr-template:
+    description: 'Require PR template sections'
+    required: false
+    default: 'false'
+
+  # === Commit Checks ===
+  require-conventional-commits:
+    description: 'Require conventional commit messages'
+    required: false
+    default: 'false'
+  max-commit-message-length:
+    description: 'Maximum commit message length'
+    required: false
+    default: '200'
+  require-commit-author-match:
+    description: 'Require commit author matches PR author'
+    required: false
+    default: 'true'
+
+  # === Branch Checks ===
+  blocked-source-branches:
+    description: 'Comma-separated branch names blocked as PR source'
+    required: false
+    default: 'main,master'
+  allowed-target-branches:
+    description: 'Comma-separated allowed target branches (empty = all)'
+    required: false
+    default: ''
+
+  # === File Change Checks ===
+  blocked-file-patterns:
+    description: 'Comma-separated file path patterns to block (glob)'
+    required: false
+    default: ''
+  max-files-changed:
+    description: 'Maximum files changed (large changes = slop signal)'
+    required: false
+    default: '50'
+  max-additions:
+    description: 'Maximum lines added'
+    required: false
+    default: '2000'
+
+  # === Contributor Checks ===
+  min-account-age-days:
+    description: 'Minimum GitHub account age in days'
+    required: false
+    default: '7'
+  detect-spam-usernames:
+    description: 'Detect randomly generated usernames'
+    required: false
+    default: 'true'
+
+  # === AI Slop Pattern Detection ===
+  detect-excessive-comments:
+    description: 'Detect AI-typical excessive commenting patterns'
+    required: false
+    default: 'true'
+  detect-hallucinated-imports:
+    description: 'Detect imports of non-existent packages'
+    required: false
+    default: 'true'
+  max-emoji-count:
+    description: 'Maximum emoji count in PR description'
+    required: false
+    default: '10'
+
+  # === Actions ===
+  close-pr:
+    description: 'Close PR on failure'
+    required: false
+    default: 'false'
+  add-label:
+    description: 'Label to add on failure'
+    required: false
+    default: 'needs-review'
+  comment-on-pr:
+    description: 'Post review comment on PR'
+    required: false
+    default: 'true'
+
+  # === Exemptions ===
+  exempt-users:
+    description: 'Comma-separated usernames exempt from checks'
+    required: false
+    default: ''
+  exempt-bots:
+    description: 'Exempt bot accounts (dependabot, renovate, etc.)'
+    required: false
+    default: 'true'
+  exempt-draft-prs:
+    description: 'Exempt draft PRs from checks'
+    required: false
+    default: 'true'
+  exempt-labels:
+    description: 'Comma-separated PR labels that exempt from checks'
+    required: false
+    default: ''
+
+outputs:
+  quality-score:
+    description: 'Overall PR quality score (0-100)'
+  passed:
+    description: 'Whether the PR passed all checks'
+  failures:
+    description: 'Number of check failures'
+  report:
+    description: 'JSON report of all check results'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
