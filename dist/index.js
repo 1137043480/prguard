@@ -30848,6 +30848,16 @@ const IMPORT_PATTERNS = [
     /^import\s+([\w.]+)/gm,
     // Python: from yyy import xxx
     /^from\s+([\w.]+)\s+import/gm,
+    // Go: import "pkg" or import "github.com/xxx"
+    /import\s+(?:\w+\s+)?"([^"]+)"/g,
+    // Go: grouped imports
+    /^\s*(?:\w+\s+)?"([^"]+)"/gm,
+    // Java: import com.xxx.yyy
+    /^import\s+(?:static\s+)?([\w.]+)/gm,
+    // Rust: use crate::xxx or use xxx::yyy
+    /^use\s+([\w:]+(?:::[\w:]+)*)/gm,
+    // C/C++: #include "xxx" (local headers)
+    /^#include\s+"([^"]+)"/gm,
 ];
 // Known built-in modules that should not be flagged
 const NODE_BUILTINS = new Set([
@@ -30866,6 +30876,23 @@ const PYTHON_BUILTINS = new Set([
     'email', 'html', 'xml', 'csv', 'sqlite3', 'pickle', 'shelve', 'gzip',
     'zipfile', 'tarfile', 'tempfile', 'glob', 'shutil', 'pprint', 'inspect',
     'traceback', 'warnings', 'weakref', 'types', 'importlib', 'pkgutil',
+]);
+const GO_BUILTINS = new Set([
+    'fmt', 'os', 'io', 'net', 'log', 'math', 'sort', 'sync', 'time', 'strings',
+    'strconv', 'bytes', 'errors', 'context', 'crypto', 'encoding', 'flag', 'hash',
+    'path', 'reflect', 'regexp', 'runtime', 'testing', 'unicode', 'unsafe',
+    'bufio', 'builtin', 'compress', 'container', 'database', 'debug', 'embed',
+    'expvar', 'go', 'html', 'image', 'index', 'mime', 'plugin', 'text',
+    'net/http', 'io/ioutil', 'os/exec', 'path/filepath', 'encoding/json',
+    'encoding/xml', 'encoding/csv', 'encoding/base64', 'crypto/sha256',
+    'database/sql', 'net/url', 'io/fs', 'log/slog',
+]);
+const JAVA_BUILTINS_PREFIX = [
+    'java.', 'javax.', 'jakarta.',
+    'sun.', 'com.sun.', 'org.w3c.', 'org.xml.',
+];
+const RUST_BUILTINS = new Set([
+    'std', 'core', 'alloc', 'crate', 'self', 'super',
 ]);
 // Extract imports from PR diff
 function extractImportsFromDiff(files) {
@@ -30968,6 +30995,118 @@ function verifyPythonImport(importPath, sourceFile, workspacePath) {
     ];
     return possiblePaths.some(p => fs.existsSync(p));
 }
+// Check if a Go import exists
+function verifyGoImport(importPath, workspacePath) {
+    // Skip standard library
+    if (GO_BUILTINS.has(importPath))
+        return true;
+    // Standard lib packages don't contain dots in first segment
+    const firstSeg = importPath.split('/')[0];
+    if (!firstSeg.includes('.') && !importPath.includes('/'))
+        return true; // likely stdlib
+    // Check go.mod for module dependencies
+    const goModPath = path.join(workspacePath, 'go.mod');
+    if (fs.existsSync(goModPath)) {
+        const goMod = fs.readFileSync(goModPath, 'utf-8');
+        // Check module path (local packages)
+        const moduleMatch = goMod.match(/^module\s+(.+)$/m);
+        if (moduleMatch && importPath.startsWith(moduleMatch[1]))
+            return true;
+        // Check require block
+        if (goMod.includes(importPath.split('/').slice(0, 3).join('/')))
+            return true;
+    }
+    // Check if local package directory exists
+    const localPkg = path.join(workspacePath, importPath);
+    if (fs.existsSync(localPkg))
+        return true;
+    return false;
+}
+// Check if a Java import exists
+function verifyJavaImport(importPath, workspacePath) {
+    // Skip JDK built-in packages
+    if (JAVA_BUILTINS_PREFIX.some(p => importPath.startsWith(p)))
+        return true;
+    // Check pom.xml for Maven dependencies
+    const pomPath = path.join(workspacePath, 'pom.xml');
+    if (fs.existsSync(pomPath)) {
+        const pom = fs.readFileSync(pomPath, 'utf-8');
+        // Extract groupId from import (e.g., "org.springframework" from "org.springframework.boot.xxx")
+        const parts = importPath.split('.');
+        const groupPrefix = parts.slice(0, Math.min(3, parts.length)).join('.');
+        if (pom.includes(groupPrefix))
+            return true;
+    }
+    // Check build.gradle for Gradle dependencies
+    for (const gradleFile of ['build.gradle', 'build.gradle.kts']) {
+        const gradlePath = path.join(workspacePath, gradleFile);
+        if (fs.existsSync(gradlePath)) {
+            const gradle = fs.readFileSync(gradlePath, 'utf-8');
+            const parts = importPath.split('.');
+            const groupPrefix = parts.slice(0, Math.min(3, parts.length)).join('.');
+            if (gradle.includes(groupPrefix))
+                return true;
+        }
+    }
+    // Check if local Java file exists
+    const javaPath = importPath.replace(/\./g, '/');
+    const possiblePaths = [
+        path.join(workspacePath, 'src/main/java', javaPath + '.java'),
+        path.join(workspacePath, 'src', javaPath + '.java'),
+        path.join(workspacePath, javaPath + '.java'),
+    ];
+    return possiblePaths.some(p => fs.existsSync(p));
+}
+// Check if a Rust import exists
+function verifyRustImport(importPath, workspacePath) {
+    const rootCrate = importPath.split('::')[0];
+    // Skip built-in crates
+    if (RUST_BUILTINS.has(rootCrate))
+        return true;
+    // Check Cargo.toml for dependencies
+    const cargoPath = path.join(workspacePath, 'Cargo.toml');
+    if (fs.existsSync(cargoPath)) {
+        const cargo = fs.readFileSync(cargoPath, 'utf-8');
+        // Normalize: crate names use hyphens in Cargo.toml but underscores in code
+        const crateName = rootCrate.replace(/_/g, '-');
+        if (cargo.includes(crateName) || cargo.includes(rootCrate))
+            return true;
+    }
+    // Check if local module exists
+    const modulePath = rootCrate;
+    const possiblePaths = [
+        path.join(workspacePath, 'src', modulePath + '.rs'),
+        path.join(workspacePath, 'src', modulePath, 'mod.rs'),
+    ];
+    return possiblePaths.some(p => fs.existsSync(p));
+}
+// Check if a C/C++ include exists
+function verifyCppInclude(includePath, sourceFile, workspacePath) {
+    // Only check quoted includes (#include "xxx"), not angle bracket (#include <xxx>)
+    // Angle brackets are system headers, captured by different regex
+    const sourceDir = path.dirname(path.join(workspacePath, sourceFile));
+    const searchDirs = [
+        sourceDir,
+        workspacePath,
+        path.join(workspacePath, 'include'),
+        path.join(workspacePath, 'src'),
+        path.join(workspacePath, 'lib'),
+    ];
+    for (const dir of searchDirs) {
+        const resolved = path.resolve(dir, includePath);
+        if (fs.existsSync(resolved))
+            return true;
+    }
+    // Check CMakeLists.txt for external dependencies
+    const cmakePath = path.join(workspacePath, 'CMakeLists.txt');
+    if (fs.existsSync(cmakePath)) {
+        const cmake = fs.readFileSync(cmakePath, 'utf-8');
+        const baseName = path.basename(includePath, path.extname(includePath));
+        if (cmake.toLowerCase().includes(baseName.toLowerCase()))
+            return true;
+    }
+    return false;
+}
 function checkImports(pr, config, workspacePath) {
     const results = [];
     if (!workspacePath || !fs.existsSync(workspacePath)) {
@@ -30979,6 +31118,10 @@ function checkImports(pr, config, workspacePath) {
     for (const [filename, imports] of importsByFile) {
         const isJS = /\.(js|jsx|ts|tsx|mjs|cjs)$/.test(filename);
         const isPython = /\.py$/.test(filename);
+        const isGo = /\.go$/.test(filename);
+        const isJava = /\.java$/.test(filename);
+        const isRust = /\.rs$/.test(filename);
+        const isCpp = /\.(c|cpp|cc|cxx|h|hpp)$/.test(filename);
         for (const imp of imports) {
             let exists = true;
             if (isJS) {
@@ -30986,6 +31129,18 @@ function checkImports(pr, config, workspacePath) {
             }
             else if (isPython) {
                 exists = verifyPythonImport(imp, filename, workspacePath);
+            }
+            else if (isGo) {
+                exists = verifyGoImport(imp, workspacePath);
+            }
+            else if (isJava) {
+                exists = verifyJavaImport(imp, workspacePath);
+            }
+            else if (isRust) {
+                exists = verifyRustImport(imp, workspacePath);
+            }
+            else if (isCpp) {
+                exists = verifyCppInclude(imp, filename, workspacePath);
             }
             if (!exists) {
                 nonExistentImports.push({ file: filename, import: imp });
