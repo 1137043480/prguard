@@ -11,6 +11,6 @@ export interface CodeReviewResult {
     summary: string;
 }
 declare function parseDiffPositions(patch: string): Map<number, number>;
-export declare function reviewCode(pr: PRData, config: Config): Promise<CodeReviewResult>;
+export declare function reviewCode(pr: PRData, config: Config, workspacePath?: string): Promise<CodeReviewResult>;
 export { parseDiffPositions };
 //# sourceMappingURL=code-reviewer.d.ts.map

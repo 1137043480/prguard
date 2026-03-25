@@ -1,5 +1,6 @@
 import { Config } from '../config/schema';
 import { PRData, FileData } from '../config/types';
+import { buildProjectContext, formatContextForPrompt } from './context-builder';
 
 export interface InlineComment {
   path: string;
@@ -78,12 +79,17 @@ function parseDiffPositions(patch: string): Map<number, number> {
 }
 
 // Build prompt for a single file's diff
-function buildFileReviewPrompt(file: FileData, prTitle: string): string {
+function buildFileReviewPrompt(file: FileData, prTitle: string, projectContext?: string): string {
   const truncatedPatch = file.patch && file.patch.length > 6000
     ? file.patch.slice(0, 6000) + '\n... (truncated)'
     : file.patch || '';
 
-  return `## Reviewing: ${file.filename}
+  let prompt = '';
+  if (projectContext) {
+    prompt += projectContext + '\n---\n\n';
+  }
+
+  prompt += `## Reviewing: ${file.filename}
 **PR Title:** ${prTitle}
 **Changes:** +${file.additions} -${file.deletions}
 
@@ -91,7 +97,9 @@ function buildFileReviewPrompt(file: FileData, prTitle: string): string {
 ${truncatedPatch}
 \`\`\`
 
-Review this diff and provide line-level comments.`;
+Review this diff in the context of the project above. Identify issues that a simple diff-only review would miss, such as inconsistencies with related files, duplicated logic, or misuse of existing APIs.`;
+
+  return prompt;
 }
 
 // Call AI to review a single file
@@ -99,6 +107,7 @@ async function reviewFile(
   file: FileData,
   prTitle: string,
   config: Config,
+  projectContext?: string,
 ): Promise<InlineComment[]> {
   if (!file.patch || file.additions === 0) return [];
 
@@ -117,7 +126,7 @@ async function reviewFile(
       model: config.ai.model,
       messages: [
         { role: 'system', content: CODE_REVIEW_PROMPT },
-        { role: 'user', content: buildFileReviewPrompt(file, prTitle) },
+        { role: 'user', content: buildFileReviewPrompt(file, prTitle, projectContext) },
       ],
       temperature: 0.2,
       max_tokens: 2000,
@@ -151,6 +160,7 @@ async function reviewFile(
 export async function reviewCode(
   pr: PRData,
   config: Config,
+  workspacePath?: string,
 ): Promise<CodeReviewResult> {
   // Filter to reviewable files (code files with patches)
   const reviewableFiles = pr.files.filter(f =>
@@ -167,9 +177,20 @@ export async function reviewCode(
   const filesToReview = reviewableFiles.slice(0, 5);
   const allComments: InlineComment[] = [];
 
+  // Build project context if workspace available
+  let projectContext: string | undefined;
+  if (workspacePath) {
+    try {
+      const ctx = buildProjectContext(pr.files, workspacePath);
+      projectContext = formatContextForPrompt(ctx);
+    } catch {
+      // Skip context on error
+    }
+  }
+
   // Review files (sequential to respect rate limits)
   for (const file of filesToReview) {
-    const comments = await reviewFile(file, pr.title, config);
+    const comments = await reviewFile(file, pr.title, config, projectContext);
     allComments.push(...comments);
   }
 

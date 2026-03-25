@@ -148,7 +148,7 @@ async function run(): Promise<void> {
       if (core.getInput('inline-review') !== 'false') {
         core.info('📝 Running line-level code review...');
         try {
-          const codeReview = await reviewCode(prData, config);
+          const codeReview = await reviewCode(prData, config, workspacePath || undefined);
           if (codeReview.comments.length > 0) {
             core.info(`📝 Found ${codeReview.comments.length} inline comment(s)`);
             await postInlineReview(config.githubToken, prData, codeReview.comments);

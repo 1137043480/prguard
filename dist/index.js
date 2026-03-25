@@ -30107,13 +30107,14 @@ function createAIProvider(config) {
 /***/ }),
 
 /***/ 2633:
-/***/ ((__unused_webpack_module, exports) => {
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.reviewCode = reviewCode;
 exports.parseDiffPositions = parseDiffPositions;
+const context_builder_1 = __nccwpck_require__(1091);
 const CODE_REVIEW_PROMPT = `You are PRGuard, an expert code reviewer. Review the following code diff and provide specific, actionable line-level feedback.
 
 For each issue you find, provide:
@@ -30175,11 +30176,15 @@ function parseDiffPositions(patch) {
     return lineToPosition;
 }
 // Build prompt for a single file's diff
-function buildFileReviewPrompt(file, prTitle) {
+function buildFileReviewPrompt(file, prTitle, projectContext) {
     const truncatedPatch = file.patch && file.patch.length > 6000
         ? file.patch.slice(0, 6000) + '\n... (truncated)'
         : file.patch || '';
-    return `## Reviewing: ${file.filename}
+    let prompt = '';
+    if (projectContext) {
+        prompt += projectContext + '\n---\n\n';
+    }
+    prompt += `## Reviewing: ${file.filename}
 **PR Title:** ${prTitle}
 **Changes:** +${file.additions} -${file.deletions}
 
@@ -30187,10 +30192,11 @@ function buildFileReviewPrompt(file, prTitle) {
 ${truncatedPatch}
 \`\`\`
 
-Review this diff and provide line-level comments.`;
+Review this diff in the context of the project above. Identify issues that a simple diff-only review would miss, such as inconsistencies with related files, duplicated logic, or misuse of existing APIs.`;
+    return prompt;
 }
 // Call AI to review a single file
-async function reviewFile(file, prTitle, config) {
+async function reviewFile(file, prTitle, config, projectContext) {
     if (!file.patch || file.additions === 0)
         return [];
     // Skip binary/generated files
@@ -30207,7 +30213,7 @@ async function reviewFile(file, prTitle, config) {
             model: config.ai.model,
             messages: [
                 { role: 'system', content: CODE_REVIEW_PROMPT },
-                { role: 'user', content: buildFileReviewPrompt(file, prTitle) },
+                { role: 'user', content: buildFileReviewPrompt(file, prTitle, projectContext) },
             ],
             temperature: 0.2,
             max_tokens: 2000,
@@ -30233,7 +30239,7 @@ async function reviewFile(file, prTitle, config) {
     }
 }
 // Main: review all files in a PR
-async function reviewCode(pr, config) {
+async function reviewCode(pr, config, workspacePath) {
     // Filter to reviewable files (code files with patches)
     const reviewableFiles = pr.files.filter(f => f.patch &&
         f.additions > 0 &&
@@ -30244,9 +30250,20 @@ async function reviewCode(pr, config) {
     // Limit to 5 files to avoid excessive API calls
     const filesToReview = reviewableFiles.slice(0, 5);
     const allComments = [];
+    // Build project context if workspace available
+    let projectContext;
+    if (workspacePath) {
+        try {
+            const ctx = (0, context_builder_1.buildProjectContext)(pr.files, workspacePath);
+            projectContext = (0, context_builder_1.formatContextForPrompt)(ctx);
+        }
+        catch {
+            // Skip context on error
+        }
+    }
     // Review files (sequential to respect rate limits)
     for (const file of filesToReview) {
-        const comments = await reviewFile(file, pr.title, config);
+        const comments = await reviewFile(file, pr.title, config, projectContext);
         allComments.push(...comments);
     }
     // Validate line numbers exist in diff
@@ -30261,6 +30278,375 @@ async function reviewCode(pr, config) {
         ? `Found ${validComments.length} issue(s) across ${filesToReview.length} file(s).`
         : 'No issues found in code review.';
     return { comments: validComments, summary };
+}
+
+
+/***/ }),
+
+/***/ 1091:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.buildProjectContext = buildProjectContext;
+exports.formatContextForPrompt = formatContextForPrompt;
+const fs = __importStar(__nccwpck_require__(9896));
+const path = __importStar(__nccwpck_require__(6928));
+// Import resolution patterns per language
+const IMPORT_RESOLVERS = {
+    js: [
+        /import\s+(?:(?:\{[^}]*\}|\*\s+as\s+\w+|\w+)(?:\s*,\s*(?:\{[^}]*\}|\*\s+as\s+\w+|\w+))*\s+from\s+)?['"]([^'"]+)['"]/g,
+        /require\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
+    ],
+    python: [
+        /^import\s+([\w.]+)/gm,
+        /^from\s+([\w.]+)\s+import/gm,
+    ],
+    go: [
+        /import\s+(?:\w+\s+)?"([^"]+)"/g,
+        /^\s*(?:\w+\s+)?"([^"]+)"/gm,
+    ],
+    java: [
+        /^import\s+(?:static\s+)?([\w.]+)/gm,
+    ],
+    rust: [
+        /^use\s+([\w:]+(?:::[\w:]+)*)/gm,
+    ],
+    cpp: [
+        /^#include\s+"([^"]+)"/gm,
+    ],
+};
+// Detect language from filename
+function detectLang(filename) {
+    if (/\.(ts|tsx|js|jsx|mjs|cjs)$/.test(filename))
+        return 'js';
+    if (/\.py$/.test(filename))
+        return 'python';
+    if (/\.go$/.test(filename))
+        return 'go';
+    if (/\.java$/.test(filename))
+        return 'java';
+    if (/\.rs$/.test(filename))
+        return 'rust';
+    if (/\.(c|cpp|cc|cxx|h|hpp)$/.test(filename))
+        return 'cpp';
+    return null;
+}
+// Extract import paths from a file's diff
+function extractImportPaths(patch, lang) {
+    const addedLines = patch
+        .split('\n')
+        .filter(l => l.startsWith('+') && !l.startsWith('+++'))
+        .map(l => l.slice(1))
+        .join('\n');
+    const imports = [];
+    const patterns = IMPORT_RESOLVERS[lang] || [];
+    for (const pattern of patterns) {
+        pattern.lastIndex = 0;
+        let match;
+        while ((match = pattern.exec(addedLines)) !== null) {
+            if (match[1])
+                imports.push(match[1]);
+        }
+    }
+    return imports;
+}
+// Resolve import path to actual file path
+function resolveImportToFile(importPath, sourceFile, workspace, lang) {
+    if (lang === 'js') {
+        // Skip npm packages (non-relative imports without @/ prefix)
+        if (!importPath.startsWith('.') && !importPath.startsWith('@/') && !importPath.startsWith('~/')) {
+            return null;
+        }
+        // Handle alias like @/src/xxx
+        let resolvedBase;
+        if (importPath.startsWith('@/') || importPath.startsWith('~/')) {
+            resolvedBase = path.join(workspace, importPath.slice(2));
+        }
+        else {
+            const sourceDir = path.dirname(path.join(workspace, sourceFile));
+            resolvedBase = path.resolve(sourceDir, importPath);
+        }
+        const extensions = ['.ts', '.tsx', '.js', '.jsx', '.mjs', ''];
+        for (const ext of extensions) {
+            const full = resolvedBase + ext;
+            if (fs.existsSync(full) && fs.statSync(full).isFile()) {
+                return path.relative(workspace, full);
+            }
+            // Check index file
+            const indexPath = path.join(resolvedBase, `index${ext}`);
+            if (fs.existsSync(indexPath) && fs.statSync(indexPath).isFile()) {
+                return path.relative(workspace, indexPath);
+            }
+        }
+    }
+    if (lang === 'python') {
+        const modulePath = importPath.replace(/\./g, '/');
+        const candidates = [
+            path.join(workspace, modulePath + '.py'),
+            path.join(workspace, modulePath, '__init__.py'),
+            path.join(workspace, 'src', modulePath + '.py'),
+        ];
+        for (const c of candidates) {
+            if (fs.existsSync(c))
+                return path.relative(workspace, c);
+        }
+    }
+    if (lang === 'go') {
+        // Only resolve local packages (those under the module path)
+        const goModPath = path.join(workspace, 'go.mod');
+        if (fs.existsSync(goModPath)) {
+            const goMod = fs.readFileSync(goModPath, 'utf-8');
+            const moduleMatch = goMod.match(/^module\s+(.+)$/m);
+            if (moduleMatch && importPath.startsWith(moduleMatch[1])) {
+                const localPath = importPath.slice(moduleMatch[1].length + 1);
+                const dir = path.join(workspace, localPath);
+                if (fs.existsSync(dir)) {
+                    // Find first .go file in directory
+                    try {
+                        const files = fs.readdirSync(dir).filter(f => f.endsWith('.go') && !f.endsWith('_test.go'));
+                        if (files.length > 0)
+                            return path.join(localPath, files[0]);
+                    }
+                    catch { /* skip */ }
+                }
+            }
+        }
+    }
+    if (lang === 'java') {
+        const javaPath = importPath.replace(/\./g, '/');
+        const candidates = [
+            path.join(workspace, 'src/main/java', javaPath + '.java'),
+            path.join(workspace, 'src', javaPath + '.java'),
+        ];
+        for (const c of candidates) {
+            if (fs.existsSync(c))
+                return path.relative(workspace, c);
+        }
+    }
+    if (lang === 'rust') {
+        const moduleName = importPath.split('::')[0];
+        if (['std', 'core', 'alloc', 'crate', 'self', 'super'].includes(moduleName)) {
+            if (moduleName === 'crate' || moduleName === 'super' || moduleName === 'self') {
+                // Local module — try to resolve
+                const parts = importPath.split('::').slice(1);
+                if (parts.length > 0) {
+                    const modPath = parts[0];
+                    const candidates = [
+                        path.join(workspace, 'src', modPath + '.rs'),
+                        path.join(workspace, 'src', modPath, 'mod.rs'),
+                    ];
+                    for (const c of candidates) {
+                        if (fs.existsSync(c))
+                            return path.relative(workspace, c);
+                    }
+                }
+            }
+            return null;
+        }
+    }
+    if (lang === 'cpp') {
+        const sourceDir = path.dirname(path.join(workspace, sourceFile));
+        const searchDirs = [sourceDir, workspace, path.join(workspace, 'include'), path.join(workspace, 'src')];
+        for (const dir of searchDirs) {
+            const full = path.resolve(dir, importPath);
+            if (fs.existsSync(full))
+                return path.relative(workspace, full);
+        }
+    }
+    return null;
+}
+// Build a compact directory tree string
+function buildDirectoryTree(workspace, maxDepth = 3) {
+    const lines = [];
+    function walk(dir, prefix, depth) {
+        if (depth > maxDepth)
+            return;
+        let entries;
+        try {
+            entries = fs.readdirSync(dir, { withFileTypes: true });
+        }
+        catch {
+            return;
+        }
+        // Filter out noise
+        const filtered = entries.filter(e => !e.name.startsWith('.') &&
+            !['node_modules', 'dist', 'build', '__pycache__', 'target', '.git',
+                'vendor', 'coverage', '.next', '.nuxt', 'out'].includes(e.name)).sort((a, b) => {
+            // Directories first
+            if (a.isDirectory() && !b.isDirectory())
+                return -1;
+            if (!a.isDirectory() && b.isDirectory())
+                return 1;
+            return a.name.localeCompare(b.name);
+        });
+        // Limit to 20 entries per directory
+        const shown = filtered.slice(0, 20);
+        const hidden = filtered.length - shown.length;
+        for (const entry of shown) {
+            const isDir = entry.isDirectory();
+            lines.push(`${prefix}${isDir ? '📁' : '📄'} ${entry.name}`);
+            if (isDir) {
+                walk(path.join(dir, entry.name), prefix + '  ', depth + 1);
+            }
+        }
+        if (hidden > 0) {
+            lines.push(`${prefix}... (+${hidden} more)`);
+        }
+    }
+    walk(workspace, '', 0);
+    return lines.join('\n');
+}
+// Read file content with truncation
+function readFileContent(filePath, maxLines = 150) {
+    try {
+        const content = fs.readFileSync(filePath, 'utf-8');
+        const lines = content.split('\n');
+        if (lines.length > maxLines) {
+            return lines.slice(0, maxLines).join('\n') + `\n\n// ... (${lines.length - maxLines} more lines truncated)`;
+        }
+        return content;
+    }
+    catch {
+        return '// Unable to read file';
+    }
+}
+// Detect project info from config files
+function detectProjectInfo(workspace) {
+    const info = [];
+    // package.json
+    const pkgPath = path.join(workspace, 'package.json');
+    if (fs.existsSync(pkgPath)) {
+        try {
+            const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+            info.push(`Project: ${pkg.name || 'unknown'} (${pkg.description || 'JS/TS project'})`);
+            if (pkg.dependencies)
+                info.push(`Dependencies: ${Object.keys(pkg.dependencies).join(', ')}`);
+        }
+        catch { /* skip */ }
+    }
+    // go.mod
+    const goModPath = path.join(workspace, 'go.mod');
+    if (fs.existsSync(goModPath)) {
+        const mod = fs.readFileSync(goModPath, 'utf-8');
+        const moduleMatch = mod.match(/^module\s+(.+)$/m);
+        if (moduleMatch)
+            info.push(`Go module: ${moduleMatch[1]}`);
+    }
+    // Cargo.toml
+    const cargoPath = path.join(workspace, 'Cargo.toml');
+    if (fs.existsSync(cargoPath)) {
+        const cargo = fs.readFileSync(cargoPath, 'utf-8');
+        const nameMatch = cargo.match(/^name\s*=\s*"(.+)"/m);
+        if (nameMatch)
+            info.push(`Rust crate: ${nameMatch[1]}`);
+    }
+    return info.join('\n') || 'Unknown project type';
+}
+// Main: build project context for a set of changed files
+function buildProjectContext(files, workspace, maxRelatedFiles = 5) {
+    // 1. Collect all import references from changed files
+    const relatedPaths = new Set();
+    for (const file of files) {
+        if (!file.patch)
+            continue;
+        const lang = detectLang(file.filename);
+        if (!lang)
+            continue;
+        const importPaths = extractImportPaths(file.patch, lang);
+        for (const imp of importPaths) {
+            const resolved = resolveImportToFile(imp, file.filename, workspace, lang);
+            if (resolved && !files.some(f => f.filename === resolved)) {
+                relatedPaths.add(resolved);
+            }
+        }
+        // Also check the full file for imports (not just diff), if it's a modification
+        if (file.status === 'modified') {
+            const fullPath = path.join(workspace, file.filename);
+            if (fs.existsSync(fullPath)) {
+                try {
+                    const fullContent = fs.readFileSync(fullPath, 'utf-8');
+                    for (const pattern of (IMPORT_RESOLVERS[lang] || [])) {
+                        pattern.lastIndex = 0;
+                        let match;
+                        while ((match = pattern.exec(fullContent)) !== null) {
+                            if (match[1]) {
+                                const resolved = resolveImportToFile(match[1], file.filename, workspace, lang);
+                                if (resolved && !files.some(f => f.filename === resolved)) {
+                                    relatedPaths.add(resolved);
+                                }
+                            }
+                        }
+                    }
+                }
+                catch { /* skip */ }
+            }
+        }
+    }
+    // 2. Read related files (capped)
+    const relatedFiles = [];
+    const sortedPaths = [...relatedPaths].slice(0, maxRelatedFiles);
+    for (const relPath of sortedPaths) {
+        const fullPath = path.join(workspace, relPath);
+        if (fs.existsSync(fullPath)) {
+            relatedFiles.push({
+                path: relPath,
+                content: readFileContent(fullPath),
+            });
+        }
+    }
+    // 3. Build directory tree
+    const directoryTree = buildDirectoryTree(workspace);
+    // 4. Detect project info
+    const projectInfo = detectProjectInfo(workspace);
+    return { directoryTree, relatedFiles, projectInfo };
+}
+// Format context for AI prompt
+function formatContextForPrompt(ctx) {
+    let prompt = `## Project Context\n\n`;
+    prompt += `**Project Info:**\n${ctx.projectInfo}\n\n`;
+    prompt += `**Directory Structure:**\n\`\`\`\n${ctx.directoryTree}\n\`\`\`\n\n`;
+    if (ctx.relatedFiles.length > 0) {
+        prompt += `**Related Files (referenced by the changed code):**\n\n`;
+        for (const file of ctx.relatedFiles) {
+            prompt += `### ${file.path}\n\`\`\`\n${file.content}\n\`\`\`\n\n`;
+        }
+    }
+    return prompt;
 }
 
 
@@ -32007,7 +32393,7 @@ async function run() {
             if (core.getInput('inline-review') !== 'false') {
                 core.info('📝 Running line-level code review...');
                 try {
-                    const codeReview = await (0, code_reviewer_1.reviewCode)(prData, config);
+                    const codeReview = await (0, code_reviewer_1.reviewCode)(prData, config, workspacePath || undefined);
                     if (codeReview.comments.length > 0) {
                         core.info(`📝 Found ${codeReview.comments.length} inline comment(s)`);
                         await (0, inline_review_1.postInlineReview)(config.githubToken, prData, codeReview.comments);
