@@ -14,7 +14,9 @@ import { checkPRHistory } from './checks/pr-history';
 import { checkMultiPR } from './checks/multi-pr-detector';
 import { calculateScore } from './scoring/scorer';
 import { createAIProvider } from './ai/analyzer';
+import { reviewCode } from './ai/code-reviewer';
 import { postReviewComment } from './reporter/github-comment';
+import { postInlineReview } from './reporter/inline-review';
 
 async function run(): Promise<void> {
   try {
@@ -140,6 +142,22 @@ async function run(): Promise<void> {
         core.info('🤖 AI analysis complete');
       } catch (error) {
         core.warning(`AI analysis failed (continuing with rules only): ${error}`);
+      }
+
+      // V3: Line-level AI code review
+      if (core.getInput('inline-review') !== 'false') {
+        core.info('📝 Running line-level code review...');
+        try {
+          const codeReview = await reviewCode(prData, config);
+          if (codeReview.comments.length > 0) {
+            core.info(`📝 Found ${codeReview.comments.length} inline comment(s)`);
+            await postInlineReview(config.githubToken, prData, codeReview.comments);
+          } else {
+            core.info('📝 No inline issues found');
+          }
+        } catch (error) {
+          core.warning(`Inline code review failed: ${error}`);
+        }
       }
     }
 

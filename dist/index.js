@@ -30106,6 +30106,166 @@ function createAIProvider(config) {
 
 /***/ }),
 
+/***/ 2633:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.reviewCode = reviewCode;
+exports.parseDiffPositions = parseDiffPositions;
+const CODE_REVIEW_PROMPT = `You are PRGuard, an expert code reviewer. Review the following code diff and provide specific, actionable line-level feedback.
+
+For each issue you find, provide:
+- The exact filename
+- The exact line number in the NEW file (from the diff header @@ ... +LINE,COUNT @@)
+- A concise, helpful comment
+- Severity: "critical" (bugs, security), "warning" (potential issues), "suggestion" (improvements), "nitpick" (style/minor)
+
+Focus on:
+1. Bugs and logic errors
+2. Security vulnerabilities (SQL injection, XSS, hardcoded secrets)
+3. Unused imports or variables
+4. Non-existent imports or API calls
+5. Poor error handling
+6. Performance issues
+7. Naming and style inconsistencies with the project
+8. Missing edge case handling
+
+Rules:
+- Be specific, not generic. Reference actual code.
+- Maximum 10 comments per file to avoid noise.
+- Don't comment on things that are correct and obvious.
+- Be constructive, not dismissive.
+
+Respond in JSON:
+{
+  "comments": [
+    {"path": "src/file.ts", "line": 15, "body": "Description of issue", "severity": "warning"}
+  ],
+  "summary": "Brief 1-sentence overall assessment"
+}`;
+// Parse diff to extract line mappings (we need "position" for GitHub API)
+function parseDiffPositions(patch) {
+    const lineToPosition = new Map();
+    const lines = patch.split('\n');
+    let newLine = 0;
+    let position = 0;
+    for (const line of lines) {
+        position++;
+        // Parse hunk header: @@ -old,count +new,count @@
+        const hunkMatch = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+        if (hunkMatch) {
+            newLine = parseInt(hunkMatch[1], 10) - 1;
+            continue;
+        }
+        if (line.startsWith('+')) {
+            newLine++;
+            lineToPosition.set(newLine, position);
+        }
+        else if (line.startsWith('-')) {
+            // Deleted line — don't increment newLine
+        }
+        else {
+            // Context line
+            newLine++;
+            lineToPosition.set(newLine, position);
+        }
+    }
+    return lineToPosition;
+}
+// Build prompt for a single file's diff
+function buildFileReviewPrompt(file, prTitle) {
+    const truncatedPatch = file.patch && file.patch.length > 6000
+        ? file.patch.slice(0, 6000) + '\n... (truncated)'
+        : file.patch || '';
+    return `## Reviewing: ${file.filename}
+**PR Title:** ${prTitle}
+**Changes:** +${file.additions} -${file.deletions}
+
+\`\`\`diff
+${truncatedPatch}
+\`\`\`
+
+Review this diff and provide line-level comments.`;
+}
+// Call AI to review a single file
+async function reviewFile(file, prTitle, config) {
+    if (!file.patch || file.additions === 0)
+        return [];
+    // Skip binary/generated files
+    if (/\.(lock|min\.|bundle\.|map|woff|ttf|png|jpg|svg)/.test(file.filename))
+        return [];
+    const baseUrl = config.ai.baseUrl || 'https://api.openai.com/v1';
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${config.ai.apiKey}`,
+        },
+        body: JSON.stringify({
+            model: config.ai.model,
+            messages: [
+                { role: 'system', content: CODE_REVIEW_PROMPT },
+                { role: 'user', content: buildFileReviewPrompt(file, prTitle) },
+            ],
+            temperature: 0.2,
+            max_tokens: 2000,
+            response_format: { type: 'json_object' },
+        }),
+    });
+    if (!response.ok) {
+        return []; // Silently skip on API error
+    }
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content;
+    if (!content)
+        return [];
+    try {
+        const parsed = JSON.parse(content);
+        return (parsed.comments || []).map(c => ({
+            ...c,
+            path: file.filename, // Ensure correct path
+        }));
+    }
+    catch {
+        return [];
+    }
+}
+// Main: review all files in a PR
+async function reviewCode(pr, config) {
+    // Filter to reviewable files (code files with patches)
+    const reviewableFiles = pr.files.filter(f => f.patch &&
+        f.additions > 0 &&
+        /\.(ts|tsx|js|jsx|py|go|rs|java|rb|php|c|cpp|cs|swift|kt)$/.test(f.filename));
+    if (reviewableFiles.length === 0) {
+        return { comments: [], summary: 'No code files to review.' };
+    }
+    // Limit to 5 files to avoid excessive API calls
+    const filesToReview = reviewableFiles.slice(0, 5);
+    const allComments = [];
+    // Review files (sequential to respect rate limits)
+    for (const file of filesToReview) {
+        const comments = await reviewFile(file, pr.title, config);
+        allComments.push(...comments);
+    }
+    // Validate line numbers exist in diff
+    const validComments = allComments.filter(c => {
+        const file = pr.files.find(f => f.filename === c.path);
+        if (!file?.patch)
+            return false;
+        const positions = parseDiffPositions(file.patch);
+        return positions.has(c.line);
+    });
+    const summary = validComments.length > 0
+        ? `Found ${validComments.length} issue(s) across ${filesToReview.length} file(s).`
+        : 'No issues found in code review.';
+    return { comments: validComments, summary };
+}
+
+
+/***/ }),
+
 /***/ 5901:
 /***/ ((__unused_webpack_module, exports) => {
 
@@ -31576,7 +31736,9 @@ const pr_history_1 = __nccwpck_require__(8742);
 const multi_pr_detector_1 = __nccwpck_require__(1846);
 const scorer_1 = __nccwpck_require__(789);
 const analyzer_1 = __nccwpck_require__(2898);
+const code_reviewer_1 = __nccwpck_require__(2633);
 const github_comment_1 = __nccwpck_require__(5506);
+const inline_review_1 = __nccwpck_require__(1173);
 async function run() {
     try {
         core.info('🛡️ PRGuard — AI-powered PR quality guardian');
@@ -31685,6 +31847,23 @@ async function run() {
             }
             catch (error) {
                 core.warning(`AI analysis failed (continuing with rules only): ${error}`);
+            }
+            // V3: Line-level AI code review
+            if (core.getInput('inline-review') !== 'false') {
+                core.info('📝 Running line-level code review...');
+                try {
+                    const codeReview = await (0, code_reviewer_1.reviewCode)(prData, config);
+                    if (codeReview.comments.length > 0) {
+                        core.info(`📝 Found ${codeReview.comments.length} inline comment(s)`);
+                        await (0, inline_review_1.postInlineReview)(config.githubToken, prData, codeReview.comments);
+                    }
+                    else {
+                        core.info('📝 No inline issues found');
+                    }
+                }
+                catch (error) {
+                    core.warning(`Inline code review failed: ${error}`);
+                }
             }
         }
         // Calculate final score
@@ -31924,6 +32103,140 @@ ${report.results.map(r => {
 ---
 <sub>🛡️ <a href="https://github.com/1137043480/prguard">PRGuard</a> — AI-powered PR quality guardian | <a href="https://github.com/1137043480/prguard/issues">Report Issue</a></sub>
 `;
+}
+
+
+/***/ }),
+
+/***/ 1173:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.postInlineReview = postInlineReview;
+const github = __importStar(__nccwpck_require__(3228));
+const core = __importStar(__nccwpck_require__(7484));
+const code_reviewer_1 = __nccwpck_require__(2633);
+const SEVERITY_EMOJI = {
+    critical: '🔴',
+    warning: '🟡',
+    suggestion: '💡',
+    nitpick: '🔵',
+};
+// Post inline review comments using GitHub Pull Request Review API
+async function postInlineReview(token, pr, comments) {
+    if (comments.length === 0) {
+        core.info('No inline comments to post.');
+        return;
+    }
+    const context = github.context;
+    const octokit = github.getOctokit(token);
+    const { owner, repo } = context.repo;
+    // Build review comments with diff positions
+    const reviewComments = [];
+    for (const comment of comments) {
+        // Find the file's patch to get position mapping
+        const file = pr.files.find(f => f.filename === comment.path);
+        if (!file?.patch)
+            continue;
+        const positions = (0, code_reviewer_1.parseDiffPositions)(file.patch);
+        const position = positions.get(comment.line);
+        if (!position) {
+            core.debug(`Skipping comment on ${comment.path}:${comment.line} — line not in diff`);
+            continue;
+        }
+        const emoji = SEVERITY_EMOJI[comment.severity] || '💬';
+        reviewComments.push({
+            path: comment.path,
+            position,
+            body: `${emoji} **${comment.severity.toUpperCase()}**: ${comment.body}`,
+        });
+    }
+    if (reviewComments.length === 0) {
+        core.info('No valid inline comments to post (lines not in diff).');
+        return;
+    }
+    try {
+        // Delete previous PRGuard reviews to avoid duplicates
+        const { data: existingReviews } = await octokit.rest.pulls.listReviews({
+            owner,
+            repo,
+            pull_number: pr.number,
+        });
+        // Find and dismiss old PRGuard reviews
+        for (const review of existingReviews) {
+            if (review.body?.includes('PRGuard Code Review')) {
+                try {
+                    await octokit.rest.pulls.dismissReview({
+                        owner,
+                        repo,
+                        pull_number: pr.number,
+                        review_id: review.id,
+                        message: 'Superseded by new PRGuard review',
+                    });
+                }
+                catch {
+                    // Can't dismiss — might not have permission, skip
+                }
+            }
+        }
+        // Create the review with inline comments
+        const criticalCount = comments.filter(c => c.severity === 'critical').length;
+        const event = criticalCount > 0 ? 'REQUEST_CHANGES' : 'COMMENT';
+        await octokit.rest.pulls.createReview({
+            owner,
+            repo,
+            pull_number: pr.number,
+            event: event,
+            body: `## 🛡️ PRGuard Code Review\n\n` +
+                `Found **${reviewComments.length}** issue(s) across the changed files.\n\n` +
+                `| Severity | Count |\n|----------|-------|\n` +
+                `| 🔴 Critical | ${comments.filter(c => c.severity === 'critical').length} |\n` +
+                `| 🟡 Warning | ${comments.filter(c => c.severity === 'warning').length} |\n` +
+                `| 💡 Suggestion | ${comments.filter(c => c.severity === 'suggestion').length} |\n` +
+                `| 🔵 Nitpick | ${comments.filter(c => c.severity === 'nitpick').length} |\n\n` +
+                `---\n<sub>🛡️ <a href="https://github.com/1137043480/prguard">PRGuard</a> — AI-powered code review</sub>`,
+            comments: reviewComments,
+        });
+        core.info(`✅ Posted inline review with ${reviewComments.length} comments (${event})`);
+    }
+    catch (error) {
+        core.warning(`Failed to post inline review: ${error}`);
+    }
 }
 
 

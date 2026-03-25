@@ -156,6 +156,12 @@ inputs:
     required: false
     default: '10'
 
+  # === V3: AI Code Review ===
+  inline-review:
+    description: 'Enable line-level AI code review comments (requires AI mode)'
+    required: false
+    default: 'true'
+
   # === Actions ===
   close-pr:
     description: 'Close PR on failure'
