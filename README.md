@@ -14,12 +14,15 @@
 
 | Feature | Rules Mode (Free) | AI Mode (BYOK) |
 |---------|:-:|:-:|
-| 30+ quality checks | ✅ | ✅ |
+| 40+ quality checks | ✅ | ✅ |
 | AI slop pattern detection | ✅ | ✅ |
 | Quality scoring (0-100) | ✅ | ✅ |
+| **Import verification against source** | ✅ | ✅ |
+| **Code style mismatch detection** | ✅ | ✅ |
+| **PR history / reputation analysis** | ✅ | ✅ |
+| **Cross-repo spam detection** | ✅ | ✅ |
 | Semantic code analysis | ❌ | ✅ |
 | Hallucinated API detection | Basic | Deep |
-| Project convention learning | ❌ | ✅ |
 | Auto-close slop PRs | ✅ | ✅ |
 
 ### What PRGuard Checks
@@ -31,6 +34,12 @@
 - **📁 Files** — Change size limits, sensitive files, excessive comments detection
 - **👤 Contributor** — Account age, spam username detection, trust scoring
 - **🤖 AI Slop** — Emoji overload, hallucinated imports, over-engineering signals
+
+**V2 Advanced (unique to PRGuard):**
+- **📦 Import Verification** — Checks imports against actual project source code (not guessing)
+- **🎨 Code Style** — Detects naming convention and indent style mismatches vs project
+- **📜 PR History** — Analyzes author's merge/rejection rate, flags serial rejected contributors
+- **🕸️ Cross-Repo Spam** — Detects users opening PRs across 10+ repos in 24h (bot detection)
 
 ### 📸 Example Output
 
