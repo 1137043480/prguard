@@ -30929,12 +30929,18 @@ async function run() {
             setOutputs(100, true, 0);
             return;
         }
-        // Auto-exempt owners/members/collaborators
-        const trustedAssociations = ['OWNER', 'MEMBER', 'COLLABORATOR'];
-        if (trustedAssociations.includes(pr.author_association)) {
-            core.info(`⏭️ Skipping: PR author is ${pr.author_association}`);
-            setOutputs(100, true, 0);
-            return;
+        // Auto-exempt owners/members/collaborators (unless disabled for testing)
+        const disableAutoExempt = core.getInput('disable-auto-exempt') === 'true';
+        if (!disableAutoExempt) {
+            const trustedAssociations = ['OWNER', 'MEMBER', 'COLLABORATOR'];
+            if (trustedAssociations.includes(pr.author_association)) {
+                core.info(`⏭️ Skipping: PR author is ${pr.author_association}`);
+                setOutputs(100, true, 0);
+                return;
+            }
+        }
+        else {
+            core.info('🔧 Auto-exempt disabled (testing mode)');
         }
         // Fetch PR data
         core.info('📊 Fetching PR data...');
