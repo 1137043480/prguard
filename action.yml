@@ -32,7 +32,7 @@ inputs:
   ai-model:
     description: 'AI model to use'
     required: false
-    default: 'gpt-4o-mini'
+    default: 'gpt-5'
 
   # === Scoring Thresholds ===
   max-failures:
