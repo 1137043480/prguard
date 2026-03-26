@@ -93,32 +93,62 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-### Rules + AI Analysis (BYOK)
+### Rules + AI Analysis (BYOK — Bring Your Own Key)
+
+PRGuard supports **any OpenAI-compatible API**, Anthropic Claude, and self-hosted Ollama.
+
+> **You only need your own API key. PRGuard does NOT include any built-in AI.** Your key is stored in your repository's [GitHub Secrets](https://docs.github.com/en/actions/security-guides/encrypted-secrets) and is never exposed in logs or code.
+
+#### OpenAI
 
 ```yaml
-name: PR Quality
-on:
-  pull_request_target:
-    types: [opened, reopened, synchronize]
-
-permissions:
-  contents: read
-  pull-requests: write
-
-jobs:
-  prguard:
-    runs-on: ubuntu-latest
-    steps:
       - uses: 1137043480/prguard@v0
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           mode: 'ai'
           ai-provider: 'openai'
           ai-api-key: ${{ secrets.OPENAI_API_KEY }}
-          ai-model: 'gpt-4o-mini'
+          ai-model: 'gpt-4o-mini'  # or gpt-4o, gpt-4-turbo, etc.
 ```
 
-### Using Ollama (Self-hosted, Free)
+#### Any OpenAI-Compatible API ✅
+
+Any provider with an OpenAI-compatible `/v1/chat/completions` endpoint works out of the box:
+
+| Provider | `ai-base-url` | Example Model |
+|----------|---------------|---------------|
+| **DeepSeek** | `https://api.deepseek.com/v1` | `deepseek-chat` |
+| **Groq** | `https://api.groq.com/openai/v1` | `llama-3.3-70b-versatile` |
+| **Together AI** | `https://api.together.xyz/v1` | `meta-llama/Llama-3-70b-chat-hf` |
+| **Mistral** | `https://api.mistral.ai/v1` | `mistral-large-latest` |
+| **OpenRouter** | `https://openrouter.ai/api/v1` | `anthropic/claude-sonnet-4-20250514` |
+| **Azure OpenAI** | `https://{name}.openai.azure.com/openai/deployments/{model}/v1` | your deployment |
+| **NewAPI / One API** | `https://your-server.com/v1` | any model |
+
+```yaml
+      - uses: 1137043480/prguard@v0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          mode: 'ai'
+          ai-provider: 'openai'
+          ai-api-key: ${{ secrets.AI_API_KEY }}
+          ai-base-url: ${{ secrets.AI_BASE_URL }}  # Your custom endpoint
+          ai-model: 'deepseek-chat'  # Your model name
+```
+
+#### Anthropic Claude
+
+```yaml
+      - uses: 1137043480/prguard@v0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          mode: 'ai'
+          ai-provider: 'anthropic'
+          ai-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          ai-model: 'claude-sonnet-4-20250514'
+```
+
+#### Self-hosted Ollama (Free, Private)
 
 ```yaml
       - uses: 1137043480/prguard@v0
@@ -128,7 +158,10 @@ jobs:
           ai-provider: 'ollama'
           ai-base-url: 'http://your-server:11434/v1'
           ai-model: 'llama3'
+          # No API key needed for Ollama
 ```
+
+> **TL;DR:** Set `ai-provider: 'openai'` + `ai-base-url` to point to **any** OpenAI-compatible endpoint. This works with 99% of AI providers.
 
 ## ⚙️ Configuration
 
