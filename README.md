@@ -223,66 +223,66 @@ All settings below are **optional** — PRGuard works out of the box with sensib
 
 | Input | Default | Description |
 |-------|---------|-------------|
-| `max-failures` | `4` | Max check failures before action is taken |
-| `min-quality-score` | `40` | Minimum score (0-100) to pass |
+| `max-failures` | `4` | How many checks can fail before PRGuard flags the PR. Increase if you want to be more lenient |
+| `min-quality-score` | `40` | PR must score above this (0-100) to pass. Set higher (e.g. `70`) for stricter quality control |
 
 ### PR Title
 
 | Input | Default | Description |
 |-------|---------|-------------|
-| `require-conventional-title` | `true` | Require conventional commit style |
-| `blocked-title-patterns` | `Update README.md,...` | Blocked title patterns (regex) |
+| `require-conventional-title` | `true` | Require titles like `feat: ...`, `fix: ...`, `docs: ...`. Set `false` if your project doesn't use conventional commits |
+| `blocked-title-patterns` | `Update README.md,...` | Auto-generated titles that indicate low effort. PRs with these titles are flagged |
 
 ### PR Description
 
 | Input | Default | Description |
 |-------|---------|-------------|
-| `require-description` | `true` | Require PR description |
-| `min-description-length` | `30` | Minimum description length |
-| `max-description-length` | `5000` | Max length (slop signal) |
-| `max-emoji-count` | `10` | Max emoji in description |
+| `require-description` | `true` | Require PR body to not be empty. Set `false` for small/trivial projects |
+| `min-description-length` | `30` | Minimum characters in PR body. Short descriptions often mean low-effort PRs |
+| `max-description-length` | `5000` | Flag overly long descriptions — a common sign of AI-generated slop |
+| `max-emoji-count` | `10` | Flag descriptions with too many emoji — another AI slop signal |
 
 ### Commits
 
 | Input | Default | Description |
 |-------|---------|-------------|
-| `require-conventional-commits` | `false` | Require conventional commits |
-| `require-commit-author-match` | `true` | Commit author must match PR author |
+| `require-conventional-commits` | `false` | Require each commit message to follow `type: message` format. Default off since many projects don't enforce this |
+| `require-commit-author-match` | `true` | Commit author email must match the PR author. Catches copied/stolen commits |
 
 ### Files
 
 | Input | Default | Description |
 |-------|---------|-------------|
-| `max-files-changed` | `50` | Max files changed |
-| `max-additions` | `2000` | Max lines added |
-| `detect-excessive-comments` | `true` | Detect AI-typical comment patterns |
-| `detect-hallucinated-imports` | `true` | Detect non-existent packages |
+| `max-files-changed` | `50` | Flag PRs that touch too many files. Large PRs are often AI-generated bulk changes |
+| `max-additions` | `2000` | Flag PRs that add too many lines. Giant code dumps are a slop signal |
+| `detect-excessive-comments` | `true` | Detect AI-style comments like `// Initialize the variable` on `let x = 0` |
+| `detect-hallucinated-imports` | `true` | Check if imported packages actually exist. AI often invents fake package names |
 
 ### Contributor
 
 | Input | Default | Description |
 |-------|---------|-------------|
-| `min-account-age-days` | `7` | Minimum account age |
-| `detect-spam-usernames` | `true` | Detect random/bot usernames |
+| `min-account-age-days` | `7` | Flag accounts created less than 7 days ago. Fresh accounts are often spam bots |
+| `detect-spam-usernames` | `true` | Flag random-looking usernames like `xjk283hd` — typical of bot accounts |
 
-### Actions
-
-| Input | Default | Description |
-|-------|---------|-------------|
-| `close-pr` | `false` | Auto-close failing PRs |
-| `add-label` | `needs-review` | Label to add on failure |
-| `comment-on-pr` | `true` | Post review comment |
-
-### Exemptions
+### Actions — What PRGuard does when a PR fails
 
 | Input | Default | Description |
 |-------|---------|-------------|
-| `exempt-bots` | `true` | Exempt bot accounts |
-| `exempt-draft-prs` | `true` | Exempt draft PRs |
-| `exempt-users` | `` | Comma-separated exempt users |
-| `exempt-labels` | `` | Exempt PR labels |
+| `close-pr` | `false` | Automatically close failing PRs. **Use with caution** — only enable if you get heavy spam |
+| `add-label` | `needs-review` | Label added to failing PRs so you can filter them in GitHub |
+| `comment-on-pr` | `true` | Post a detailed review comment with score and issues. Set `false` to run silently |
 
-> **Note:** Owners, Members, and Collaborators are **automatically exempt** — no configuration needed.
+### Exemptions — Who skips PRGuard checks
+
+| Input | Default | Description |
+|-------|---------|-------------|
+| `exempt-bots` | `true` | Skip Dependabot, Renovate, and other known bots |
+| `exempt-draft-prs` | `true` | Skip draft PRs (still work-in-progress) |
+| `exempt-users` | `` | Skip specific users, e.g. `user1,user2` (comma-separated) |
+| `exempt-labels` | `` | Skip PRs with certain labels, e.g. `skip-review,trusted` |
+
+> **Note:** Repository Owners, Members, and Collaborators are **automatically exempt** — no configuration needed.
 
 ## 📊 Outputs
 
