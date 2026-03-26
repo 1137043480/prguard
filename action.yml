@@ -1,4 +1,4 @@
-name: 'PRGuard - AI Code Review'
+name: 'PRGuard - PR Quality Guardian'
 description: 'AI-powered PR quality guardian - detect and block low-quality & AI slop PRs'
 author: '1137043480'
 
