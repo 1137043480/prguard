@@ -105,7 +105,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: 1137043480/PRGuard@v0
+      - uses: 1137043480/PRGuard@v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           # ↑ This is auto-provided by GitHub. You do NOT need to create it.
@@ -140,7 +140,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: 1137043480/PRGuard@v0
+      - uses: 1137043480/PRGuard@v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           mode: 'ai'

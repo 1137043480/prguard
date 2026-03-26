@@ -50,7 +50,7 @@ jobs:
   prguard:
     runs-on: ubuntu-latest
     steps:
-      - uses: 1137043480/PRGuard@v0
+      - uses: 1137043480/PRGuard@v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
@@ -71,7 +71,7 @@ jobs:
   prguard:
     runs-on: ubuntu-latest
     steps:
-      - uses: 1137043480/PRGuard@v0
+      - uses: 1137043480/PRGuard@v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           mode: 'ai'
@@ -83,7 +83,7 @@ jobs:
 ### 方式三：使用 Ollama（自托管、免费）
 
 ```yaml
-      - uses: 1137043480/PRGuard@v0
+      - uses: 1137043480/PRGuard@v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           mode: 'ai'
