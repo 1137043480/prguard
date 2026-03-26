@@ -1,6 +1,6 @@
 # 🛡️ PRGuard
 
-**AI-powered PR quality guardian — detect and block low-quality & AI slop pull requests**
+**AI-powered PR quality guardian — detect and block low-quality pull requests, whether written by humans or AI**
 
 [![GitHub Action](https://img.shields.io/badge/GitHub-Action-blue?logo=github)](https://github.com/1137043480/PRGuard)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -8,7 +8,7 @@
 
 ---
 
-> Open-source maintainers are drowning in AI-generated slop PRs. PRGuard stops them before they reach your review queue — with **zero cost** in rules mode, or deep AI analysis with your own API key.
+> Low-quality PRs waste maintainers' time — whether it's AI-generated slop or human-submitted code with vague titles, empty descriptions, and sloppy commits. PRGuard catches them all before they reach your review queue — with **zero cost** in rules mode, or deep AI analysis with your own API key.
 
 ## ✨ Features
 

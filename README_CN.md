@@ -1,6 +1,6 @@
 # 🛡️ PRGuard
 
-**AI 驱动的 PR 质量守卫 — 自动检测和拦截低质量 & AI slop 拉取请求**
+**AI 驱动的 PR 质量守卫 — 自动检测和拦截低质量拉取请求，无论来自人工还是 AI**
 
 [![GitHub Action](https://img.shields.io/badge/GitHub-Action-blue?logo=github)](https://github.com/1137043480/PRGuard)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -8,7 +8,7 @@
 
 ---
 
-> 开源维护者正被大量 AI 生成的低质量 PR 淹没。PRGuard 在它们进入你的审查队列之前就将其拦截 — 规则模式**完全免费**，AI 模式使用你自己的 API Key。
+> 低质量 PR 浪费维护者的时间 — 不管是 AI 生成的垃圾代码，还是人工提交的含糊标题、空描述、草率 commit。PRGuard 在它们进入你的审查队列之前就全部拦截 — 规则模式**完全免费**，AI 模式使用你自己的 API Key。
 
 ## ✨ 功能特性
 
