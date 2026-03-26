@@ -1,5 +1,5 @@
-name: 'PRGuard - PR Quality Guardian'
-description: 'AI-powered PR quality guardian - detect and block low-quality & AI slop PRs'
+name: 'PRGuard - Free AI Code Reviewer'
+description: 'Free AI Code Reviewer for GitHub — line-level review, 40+ quality checks, and automatic blocking of low-quality PRs'
 author: '1137043480'
 
 branding:
