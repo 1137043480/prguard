@@ -41,6 +41,11 @@
 - **📜 PR History** — Analyzes author's merge/rejection rate, flags serial rejected contributors
 - **🕸️ Cross-Repo Spam** — Detects users opening PRs across 10+ repos in 24h (bot detection)
 
+**V3 AI Code Review** (requires AI API key):
+- **📝 Line-Level Review** — AI posts inline comments on specific code lines, like a human reviewer
+- **🧠 Import Graph Context** — AI reads related project files (not just the diff) to catch duplicated logic, API misuse, and style inconsistencies
+- **⚡ Auto Request Changes** — Automatically marks PR as "changes requested" when critical issues are found
+
 ### 📸 Example Output
 
 When PRGuard detects a low-quality PR, it posts a detailed review comment:
