@@ -21,6 +21,8 @@
 | **Code style mismatch detection** | ✅ | ✅ |
 | **PR history / reputation analysis** | ✅ | ✅ |
 | **Cross-repo spam detection** | ✅ | ✅ |
+| **Line-level AI code review** | ❌ | ✅ |
+| **Import Graph context injection** | ❌ | ✅ |
 | Semantic code analysis | ❌ | ✅ |
 | Hallucinated API detection | Basic | Deep |
 | Auto-close slop PRs | ✅ | ✅ |
@@ -281,13 +283,21 @@ For **Anthropic Claude** (native API, not OpenAI-compatible):
 | `failures` | Number of failed checks |
 | `report` | Full JSON report |
 
+In addition, PRGuard posts:
+- **📋 Summary comment** — Quality score, rule violations, AI analysis (on every PR)
+- **📝 Inline review comments** — Line-level feedback on specific code issues (AI mode only)
+- **🏷️ Labels** — Adds configurable labels on failing PRs
+- **🔄 Request Changes** — Marks PR as "changes requested" when critical issues are found (AI mode only)
+
 ## 🆚 PRGuard vs Alternatives
 
 | Feature | PRGuard | anti-slop | PR-Agent | CodeRabbit |
 |---------|---------|-----------|----------|------------|
-| Rule checks | 30+ | 31 | ❌ | ❌ |
-| AI semantic analysis | ✅ (BYOK) | ❌ | ✅ | ✅ |
+| Rule checks | 40+ | 31 | ❌ | ❌ |
+| Line-level AI review | ✅ (BYOK) | ❌ | ✅ | ✅ |
+| Import Graph context | ✅ | ❌ | ❌ | ✅ |
 | AI slop detection | ✅ Deep | ✅ Basic | ❌ | ❌ |
+| Import verification | ✅ 6 languages | ❌ | ❌ | ❌ |
 | Quality scoring | ✅ 0-100 | ❌ | ❌ | ❌ |
 | Self-hosted AI (Ollama) | ✅ | ❌ | ❌ | ❌ |
 | Zero-cost mode | ✅ | ✅ | ❌ | ❌ |
