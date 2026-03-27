@@ -1,6 +1,6 @@
 # 🛡️ PRGuard
 
-**免费的 GitHub AI Code Reviewer — 逐行代码审查、40+ 质量检查、自动拦截低质量 PR**
+**免费的 GitHub & GitLab AI Code Reviewer — 逐行代码审查、40+ 质量检查、自动拦截低质量 PR**
 
 [![GitHub Action](https://img.shields.io/badge/GitHub-Action-blue?logo=github)](https://github.com/1137043480/PRGuard)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -182,6 +182,77 @@ jobs:
 ### 第三步：完成！
 
 下次有人发起 PR 时，PRGuard 会在 30 秒内自动运行。
+
+---
+
+## 🦊 GitLab CI/CD 支持
+
+PRGuard 同时支持 **GitLab**（包括公司自己部署的私服）。所有 40+ 质量检查和 AI 代码审查功能完全可用。
+
+### 配置步骤
+
+**1. 创建 GitLab API Token**
+
+进入 **用户设置 → 访问令牌**（或 **项目设置 → 访问令牌**），创建一个具有 `api` 权限的 Token。
+
+**2. 添加为 CI/CD 变量**
+
+进入项目的 **设置 → CI/CD → 变量**，添加：
+- 键: `GITLAB_TOKEN`，值: 你的 Token，**掩码**: ✅
+
+**3. 添加 PRGuard 到仓库**
+
+从 [GitHub Releases](https://github.com/1137043480/PRGuard/releases) 下载 `dist-gitlab/` 目录，放到仓库根目录。
+
+**4. 配置 `.gitlab-ci.yml`**
+
+```yaml
+prguard:
+  stage: test
+  image: node:20-alpine
+  script:
+    - node dist-gitlab/index.js
+  variables:
+    PRGUARD_MODE: "rules"  # 或 "ai"（需要 PRGUARD_AI_API_KEY）
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+```
+
+### GitLab AI 模式
+
+```yaml
+prguard:
+  stage: test
+  image: node:20-alpine
+  script:
+    - node dist-gitlab/index.js
+  variables:
+    PRGUARD_MODE: "ai"
+    PRGUARD_AI_PROVIDER: "openai"
+    PRGUARD_AI_API_KEY: $OPENAI_API_KEY
+    PRGUARD_AI_MODEL: "gpt-5"
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+```
+
+### GitLab 配置项（环境变量）
+
+所有配置通过 `PRGUARD_` 前缀的环境变量设置：
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `PRGUARD_MODE` | `rules` | `rules`（免费）或 `ai` |
+| `PRGUARD_MAX_FAILURES` | `4` | 最大失败数 |
+| `PRGUARD_MIN_SCORE` | `40` | 最低质量分数 (0-100) |
+| `PRGUARD_CLOSE_MR` | `false` | 自动关闭不合格 MR |
+| `PRGUARD_ADD_LABEL` | `needs-review` | 不合格 MR 的标签 |
+| `PRGUARD_AI_PROVIDER` | `openai` | AI 提供商 |
+| `PRGUARD_AI_API_KEY` | — | AI 模式的 API key |
+| `PRGUARD_AI_MODEL` | `gpt-4o-mini` | AI 模型名称 |
+
+> 完整示例见 [`.gitlab-ci.example.yml`](./.gitlab-ci.example.yml)
+
+> ⚠️ **注意：** gitlab.com 免费账户需要[身份验证](https://docs.gitlab.com/ee/ci/pipelines/settings.html)才能使用共享 Runner。**公司自部署的 GitLab 私服**有自己的 Runner，没有任何限制，开箱即用。
 
 ---
 

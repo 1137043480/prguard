@@ -113,3 +113,48 @@ export function buildConfig(getInput: (name: string) => string): Config {
     exemptLabels: parseCSV(getInput('exempt-labels')),
   });
 }
+
+// Build config from environment variables (for GitLab CI)
+export function buildConfigFromEnv(): Config {
+  const env = (name: string, fallback: string = '') =>
+    process.env[`PRGUARD_${name}`] || fallback;
+
+  return ConfigSchema.parse({
+    githubToken: process.env.GITLAB_TOKEN || '',
+    mode: env('MODE', 'rules'),
+    ai: {
+      provider: env('AI_PROVIDER', 'openai'),
+      apiKey: env('AI_API_KEY') || undefined,
+      baseUrl: env('AI_BASE_URL') || undefined,
+      model: env('AI_MODEL', 'gpt-4o-mini'),
+    },
+    maxFailures: parseInt(env('MAX_FAILURES', '4')),
+    minQualityScore: parseInt(env('MIN_SCORE', '40')),
+    requireConventionalTitle: env('REQUIRE_CONVENTIONAL_TITLE') !== 'false',
+    blockedTitlePatterns: parseCSV(env('BLOCKED_TITLE_PATTERNS')),
+    requireDescription: env('REQUIRE_DESCRIPTION') !== 'false',
+    minDescriptionLength: parseInt(env('MIN_DESCRIPTION_LENGTH', '30')),
+    maxDescriptionLength: parseInt(env('MAX_DESCRIPTION_LENGTH', '5000')),
+    requirePrTemplate: env('REQUIRE_PR_TEMPLATE') === 'true',
+    requireConventionalCommits: env('REQUIRE_CONVENTIONAL_COMMITS') === 'true',
+    maxCommitMessageLength: parseInt(env('MAX_COMMIT_MESSAGE_LENGTH', '200')),
+    requireCommitAuthorMatch: env('REQUIRE_COMMIT_AUTHOR_MATCH') !== 'false',
+    blockedSourceBranches: parseCSV(env('BLOCKED_SOURCE_BRANCHES', 'main,master')),
+    allowedTargetBranches: parseCSV(env('ALLOWED_TARGET_BRANCHES')),
+    blockedFilePatterns: parseCSV(env('BLOCKED_FILE_PATTERNS')),
+    maxFilesChanged: parseInt(env('MAX_FILES_CHANGED', '50')),
+    maxAdditions: parseInt(env('MAX_ADDITIONS', '2000')),
+    minAccountAgeDays: parseInt(env('MIN_ACCOUNT_AGE_DAYS', '7')),
+    detectSpamUsernames: env('DETECT_SPAM_USERNAMES') !== 'false',
+    detectExcessiveComments: env('DETECT_EXCESSIVE_COMMENTS') !== 'false',
+    detectHallucinatedImports: env('DETECT_HALLUCINATED_IMPORTS') !== 'false',
+    maxEmojiCount: parseInt(env('MAX_EMOJI_COUNT', '10')),
+    closePr: env('CLOSE_MR') === 'true',
+    addLabel: env('ADD_LABEL', 'needs-review'),
+    commentOnPr: env('COMMENT_ON_MR') !== 'false',
+    exemptUsers: parseCSV(env('EXEMPT_USERS')),
+    exemptBots: env('EXEMPT_BOTS') !== 'false',
+    exemptDraftPrs: env('EXEMPT_DRAFT_MRS') !== 'false',
+    exemptLabels: parseCSV(env('EXEMPT_LABELS')),
+  });
+}

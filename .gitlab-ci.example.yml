@@ -1,0 +1,57 @@
+# PRGuard for GitLab CI/CD — Example Configuration
+# 
+# This configuration runs PRGuard quality checks on every Merge Request.
+#
+# Setup:
+# 1. Copy this file as `.gitlab-ci.yml` (or merge into your existing one)
+# 2. Create a Project/Personal Access Token with "api" scope
+# 3. Add it as CI/CD variable: Settings → CI/CD → Variables → GITLAB_TOKEN
+# 4. Download the PRGuard GitLab dist:
+#    - From GitHub Releases: https://github.com/1137043480/PRGuard/releases
+#    - Place dist-gitlab/ in your repo root (or use npx)
+
+# ===========================================================
+# Option A: Using downloaded dist-gitlab (recommended for private)
+# ===========================================================
+prguard:
+  stage: test
+  image: node:20-alpine
+  script:
+    - node dist-gitlab/index.js
+  variables:
+    # Required (set GITLAB_TOKEN in CI/CD Variables, NOT here)
+    # GITLAB_TOKEN: $GITLAB_TOKEN  
+
+    # Mode: "rules" (free) or "ai" (requires API key)
+    PRGUARD_MODE: "rules"
+
+    # Optional: AI configuration (only if mode = "ai")
+    # PRGUARD_AI_PROVIDER: "openai"
+    # PRGUARD_AI_API_KEY: $OPENAI_API_KEY
+    # PRGUARD_AI_MODEL: "gpt-4o-mini"
+
+    # Optional: Quality thresholds
+    # PRGUARD_MAX_FAILURES: "4"
+    # PRGUARD_MIN_SCORE: "40"
+
+    # Optional: Actions on failure
+    # PRGUARD_CLOSE_MR: "false"
+    # PRGUARD_ADD_LABEL: "needs-review"
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+
+# ===========================================================
+# Option B: With checkout (enables import verification)
+# ===========================================================
+# prguard-full:
+#   stage: test
+#   image: node:20-alpine
+#   script:
+#     - node dist-gitlab/index.js
+#   variables:
+#     PRGUARD_MODE: "ai"
+#     PRGUARD_AI_API_KEY: $OPENAI_API_KEY
+#     PRGUARD_VERIFY_IMPORTS: "true"
+#     PRGUARD_CHECK_CODE_STYLE: "true"
+#   rules:
+#     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'

@@ -32272,100 +32272,6 @@ async function runPRGuard(adapter, config, options = {}) {
 
 /***/ }),
 
-/***/ 9407:
-/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
-
-"use strict";
-
-/**
- * PRGuard — GitHub Actions Entry Point
- *
- * This is the entry point for GitHub Actions.
- * Creates a GitHubAdapter and runs the platform-agnostic core logic.
- */
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-const core = __importStar(__nccwpck_require__(7484));
-const schema_1 = __nccwpck_require__(131);
-const github_1 = __nccwpck_require__(5952);
-const runner_1 = __nccwpck_require__(4473);
-async function run() {
-    try {
-        // Parse configuration from action inputs
-        const config = (0, schema_1.buildConfig)((name) => core.getInput(name));
-        // Create GitHub adapter
-        const adapter = new github_1.GitHubAdapter(config.githubToken);
-        // Check exemptions
-        const skipCheck = adapter.shouldSkip({
-            exemptDraftPrs: config.exemptDraftPrs,
-            exemptBots: config.exemptBots,
-            exemptUsers: config.exemptUsers,
-            exemptLabels: config.exemptLabels,
-            disableAutoExempt: core.getInput('disable-auto-exempt') === 'true',
-        });
-        if (skipCheck.skip) {
-            core.info(`⏭️ Skipping: ${skipCheck.reason}`);
-            core.setOutput('quality-score', '100');
-            core.setOutput('passed', 'true');
-            core.setOutput('failures', '0');
-            return;
-        }
-        // Run PRGuard with adapter
-        await (0, runner_1.runPRGuard)(adapter, config, {
-            verifyImports: core.getInput('verify-imports') !== 'false',
-            checkCodeStyle: core.getInput('check-code-style') !== 'false',
-            checkPrHistory: core.getInput('check-pr-history') !== 'false',
-            checkMultiPr: core.getInput('check-multi-pr') !== 'false',
-            maxReposPerDay: parseInt(core.getInput('max-repos-per-day') || '10'),
-            inlineReview: core.getInput('inline-review') !== 'false',
-        });
-    }
-    catch (error) {
-        if (error instanceof Error) {
-            core.setFailed(`PRGuard error: ${error.message}`);
-        }
-        else {
-            core.setFailed('PRGuard encountered an unknown error');
-        }
-    }
-}
-run();
-
-
-/***/ }),
-
 /***/ 5952:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
@@ -32739,6 +32645,309 @@ ${report.results.map(r => {
 <sub>🛡️ <a href="https://github.com/1137043480/prguard">PRGuard</a> — AI-powered PR quality guardian | <a href="https://github.com/1137043480/prguard/issues">Report Issue</a></sub>
 `;
 }
+
+
+/***/ }),
+
+/***/ 4320:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/**
+ * GitLab Platform Adapter
+ *
+ * Uses GitLab REST API (v4) to implement PlatformAdapter.
+ * Works with both gitlab.com and self-hosted GitLab instances.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.GitLabAdapter = void 0;
+const code_reviewer_1 = __nccwpck_require__(2633);
+const github_1 = __nccwpck_require__(5952);
+const COMMENT_MARKER = '<!-- prguard-review -->';
+const SEVERITY_EMOJI = {
+    critical: '🔴',
+    warning: '🟡',
+    suggestion: '💡',
+    nitpick: '🔵',
+};
+class GitLabAdapter {
+    platformName = 'gitlab';
+    token;
+    baseUrl;
+    projectId;
+    mrIid;
+    constructor(config) {
+        this.token = config.token;
+        this.baseUrl = `${config.gitlabUrl.replace(/\/$/, '')}/api/v4`;
+        this.projectId = config.projectId;
+        this.mrIid = config.mrIid;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    async api(path, options = {}) {
+        const url = `${this.baseUrl}${path}`;
+        const response = await fetch(url, {
+            ...options,
+            headers: {
+                'PRIVATE-TOKEN': this.token,
+                'Content-Type': 'application/json',
+                ...options.headers,
+            },
+        });
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(`GitLab API error ${response.status}: ${text}`);
+        }
+        // Some endpoints return empty body
+        const contentType = response.headers.get('content-type');
+        if (contentType?.includes('application/json')) {
+            return response.json();
+        }
+        return response.text();
+    }
+    get mrPath() {
+        return `/projects/${encodeURIComponent(this.projectId)}/merge_requests/${this.mrIid}`;
+    }
+    async fetchMRData() {
+        // Fetch MR details
+        const mr = await this.api(this.mrPath);
+        // Fetch commits
+        const commits = await this.api(`${this.mrPath}/commits`);
+        // Fetch changes (files)
+        const changes = await this.api(`${this.mrPath}/changes`);
+        // Fetch author details for account age
+        let authorCreatedAt = new Date().toISOString();
+        try {
+            const user = await this.api(`/users?username=${encodeURIComponent(mr.author.username)}`);
+            if (user.length > 0) {
+                authorCreatedAt = user[0].created_at;
+            }
+        }
+        catch {
+            // Use current time if user fetch fails
+        }
+        const commitData = (commits || []).map((c) => ({
+            sha: c.id,
+            message: c.message,
+            author: c.author_name || 'unknown',
+            email: c.author_email || '',
+        }));
+        const fileData = (changes.changes || []).map((f) => {
+            // Calculate additions/deletions from diff
+            const lines = (f.diff || '').split('\n');
+            const additions = lines.filter((l) => l.startsWith('+') && !l.startsWith('+++')).length;
+            const deletions = lines.filter((l) => l.startsWith('-') && !l.startsWith('---')).length;
+            const status = f.new_file ? 'added' : f.deleted_file ? 'removed' : f.renamed_file ? 'renamed' : 'modified';
+            return {
+                filename: f.new_path,
+                status,
+                additions,
+                deletions,
+                patch: f.diff,
+            };
+        });
+        // Calculate total additions/deletions
+        const totalAdditions = fileData.reduce((sum, f) => sum + f.additions, 0);
+        const totalDeletions = fileData.reduce((sum, f) => sum + f.deletions, 0);
+        // Map GitLab access level to GitHub-like association
+        // GitLab doesn't have the same concept, so we approximate
+        let authorAssociation = 'NONE';
+        try {
+            const members = await this.api(`/projects/${encodeURIComponent(this.projectId)}/members/all?user_ids=${mr.author.id}`);
+            if (members.length > 0) {
+                const accessLevel = members[0].access_level;
+                // GitLab access levels: 10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner
+                if (accessLevel >= 50)
+                    authorAssociation = 'OWNER';
+                else if (accessLevel >= 40)
+                    authorAssociation = 'MEMBER';
+                else if (accessLevel >= 30)
+                    authorAssociation = 'COLLABORATOR';
+            }
+        }
+        catch {
+            // Skip if member check fails
+        }
+        return {
+            number: parseInt(this.mrIid),
+            title: mr.title,
+            body: mr.description,
+            author: mr.author.username,
+            authorCreatedAt,
+            authorAssociation,
+            isDraft: mr.draft || mr.work_in_progress || false,
+            labels: mr.labels || [],
+            sourceBranch: mr.source_branch,
+            targetBranch: mr.target_branch,
+            commits: commitData,
+            files: fileData,
+            additions: totalAdditions,
+            deletions: totalDeletions,
+            changedFiles: fileData.length,
+        };
+    }
+    async fetchDiff() {
+        // Fetch MR changes and concatenate diffs
+        const changes = await this.api(`${this.mrPath}/changes`);
+        return (changes.changes || [])
+            .map((f) => `diff --git a/${f.new_path} b/${f.new_path}\n${f.diff || ''}`)
+            .join('\n');
+    }
+    async fetchAuthorHistory(author) {
+        try {
+            // Fetch MRs by this author in this project
+            const mrs = await this.api(`/projects/${encodeURIComponent(this.projectId)}/merge_requests?author_username=${encodeURIComponent(author)}&state=all&per_page=100`);
+            const myMRs = (mrs || []).filter((m) => m.iid !== parseInt(this.mrIid));
+            if (myMRs.length === 0) {
+                return { totalPRs: 0, mergedPRs: 0, rejectedPRs: 0, isFirstTime: true };
+            }
+            const merged = myMRs.filter((m) => m.state === 'merged');
+            const closed = myMRs.filter((m) => m.state === 'closed');
+            return {
+                totalPRs: myMRs.length,
+                mergedPRs: merged.length,
+                rejectedPRs: closed.length,
+                isFirstTime: false,
+            };
+        }
+        catch {
+            return null;
+        }
+    }
+    async fetchCrossRepoActivity(_author, _maxReposPerDay) {
+        // GitLab API doesn't support cross-project search the same way GitHub does.
+        // On self-hosted instances, we can't search globally.
+        // Return null to indicate this feature is not available.
+        this.info('ℹ️ Cross-repo activity detection is not available on GitLab');
+        return null;
+    }
+    async postComment(report) {
+        const body = (0, github_1.buildCommentBody)(report);
+        // Check for existing PRGuard comment
+        const notes = await this.api(`${this.mrPath}/notes?per_page=100&sort=desc`);
+        const existingNote = (notes || []).find((n) => !n.system && n.body?.includes(COMMENT_MARKER));
+        if (existingNote) {
+            // Update existing note
+            await this.api(`${this.mrPath}/notes/${existingNote.id}`, {
+                method: 'PUT',
+                body: JSON.stringify({ body }),
+            });
+        }
+        else {
+            // Create new note
+            await this.api(`${this.mrPath}/notes`, {
+                method: 'POST',
+                body: JSON.stringify({ body }),
+            });
+        }
+    }
+    async postInlineReview(pr, comments) {
+        if (comments.length === 0) {
+            this.info('No inline comments to post.');
+            return;
+        }
+        // Fetch MR version info for position
+        let baseSha = '';
+        let headSha = '';
+        let startSha = '';
+        try {
+            const versions = await this.api(`${this.mrPath}/versions`);
+            if (versions.length > 0) {
+                baseSha = versions[0].base_commit_sha;
+                headSha = versions[0].head_commit_sha;
+                startSha = versions[0].start_commit_sha;
+            }
+        }
+        catch {
+            this.warning('Failed to fetch MR versions for inline comments');
+            return;
+        }
+        let postedCount = 0;
+        for (const comment of comments) {
+            const file = pr.files.find(f => f.filename === comment.path);
+            if (!file?.patch)
+                continue;
+            // Verify line is in the diff
+            const positions = (0, code_reviewer_1.parseDiffPositions)(file.patch);
+            if (!positions.has(comment.line)) {
+                this.debug(`Skipping comment on ${comment.path}:${comment.line} — line not in diff`);
+                continue;
+            }
+            const emoji = SEVERITY_EMOJI[comment.severity] || '💬';
+            const body = `${emoji} **${comment.severity.toUpperCase()}**: ${comment.body}`;
+            try {
+                await this.api(`${this.mrPath}/discussions`, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        body,
+                        position: {
+                            base_sha: baseSha,
+                            start_sha: startSha,
+                            head_sha: headSha,
+                            position_type: 'text',
+                            new_path: comment.path,
+                            new_line: comment.line,
+                        },
+                    }),
+                });
+                postedCount++;
+            }
+            catch (error) {
+                this.debug(`Failed to post inline comment on ${comment.path}:${comment.line}: ${error}`);
+            }
+        }
+        if (postedCount > 0) {
+            this.info(`✅ Posted ${postedCount} inline discussion comment(s)`);
+        }
+    }
+    async addLabel(label) {
+        try {
+            // GitLab: update MR labels (append to existing)
+            const mr = await this.api(this.mrPath);
+            const currentLabels = mr.labels || [];
+            if (!currentLabels.includes(label)) {
+                await this.api(this.mrPath, {
+                    method: 'PUT',
+                    body: JSON.stringify({ labels: [...currentLabels, label].join(',') }),
+                });
+            }
+        }
+        catch {
+            // Label operation failed, skip
+        }
+    }
+    async closeMR() {
+        await this.api(this.mrPath, {
+            method: 'PUT',
+            body: JSON.stringify({ state_event: 'close' }),
+        });
+    }
+    getWorkspacePath() {
+        return process.env.CI_PROJECT_DIR;
+    }
+    // Logging — uses console since @actions/core is not available in GitLab CI
+    info(message) { console.log(`[PRGuard] ${message}`); }
+    warning(message) { console.warn(`[PRGuard] ⚠️ ${message}`); }
+    debug(message) {
+        if (process.env.PRGUARD_DEBUG === 'true') {
+            console.log(`[PRGuard:debug] ${message}`);
+        }
+    }
+    setFailed(message) {
+        console.error(`[PRGuard] ❌ ${message}`);
+        process.exitCode = 1;
+    }
+    setOutput(name, value) {
+        // GitLab CI: write outputs to dotenv file for downstream jobs
+        const outputFile = process.env.PRGUARD_OUTPUT_FILE;
+        if (outputFile) {
+            const fs = __nccwpck_require__(9896);
+            fs.appendFileSync(outputFile, `PRGUARD_${name.toUpperCase().replace(/-/g, '_')}=${value}\n`);
+        }
+        console.log(`[PRGuard:output] ${name}=${value}`);
+    }
+}
+exports.GitLabAdapter = GitLabAdapter;
 
 
 /***/ }),
@@ -39231,13 +39440,102 @@ exports.NEVER = parseUtil_js_1.INVALID;
 /******/ 	if (typeof __nccwpck_require__ !== 'undefined') __nccwpck_require__.ab = __dirname + "/";
 /******/ 	
 /************************************************************************/
-/******/ 	
-/******/ 	// startup
-/******/ 	// Load entry module and return exports
-/******/ 	// This entry module is referenced by other modules so it can't be inlined
-/******/ 	var __webpack_exports__ = __nccwpck_require__(9407);
-/******/ 	module.exports = __webpack_exports__;
-/******/ 	
+var __webpack_exports__ = {};
+// This entry need to be wrapped in an IIFE because it need to be in strict mode.
+(() => {
+"use strict";
+var exports = __webpack_exports__;
+
+/**
+ * PRGuard — GitLab CI Entry Point
+ *
+ * This is the entry point for GitLab CI/CD pipelines.
+ * Reads configuration from environment variables,
+ * creates a GitLabAdapter, and runs the core logic.
+ *
+ * Required environment variables (auto-injected by GitLab CI):
+ *   CI_MERGE_REQUEST_IID  — MR internal ID
+ *   CI_PROJECT_ID         — Project ID
+ *   CI_SERVER_URL         — GitLab instance URL
+ *
+ * Required user-defined variables:
+ *   GITLAB_TOKEN          — GitLab API token (Personal or Project)
+ *
+ * Optional configuration (env vars):
+ *   PRGUARD_MODE          — "rules" or "ai" (default: "rules")
+ *   PRGUARD_AI_PROVIDER   — "openai", "ollama", "anthropic"
+ *   PRGUARD_AI_API_KEY    — API key for AI provider
+ *   PRGUARD_AI_BASE_URL   — Custom API base URL
+ *   PRGUARD_AI_MODEL      — AI model name
+ *   PRGUARD_MAX_FAILURES  — Max failures before action (default: 4)
+ *   PRGUARD_MIN_SCORE     — Min quality score (default: 40)
+ *   PRGUARD_CLOSE_MR      — "true" to close failing MRs
+ *   PRGUARD_ADD_LABEL     — Label to add on failure
+ *   ... (see buildConfigFromEnv for full list)
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+const schema_1 = __nccwpck_require__(131);
+const gitlab_1 = __nccwpck_require__(4320);
+const runner_1 = __nccwpck_require__(4473);
+async function run() {
+    try {
+        // Validate required environment variables
+        const mrIid = process.env.CI_MERGE_REQUEST_IID;
+        const projectId = process.env.CI_PROJECT_ID;
+        const serverUrl = process.env.CI_SERVER_URL;
+        const token = process.env.GITLAB_TOKEN;
+        if (!mrIid) {
+            console.error('[PRGuard] ❌ CI_MERGE_REQUEST_IID not set. This job must run on merge_request events.');
+            console.error('[PRGuard] Add this to your .gitlab-ci.yml:');
+            console.error('  rules:');
+            console.error('    - if: \'$CI_PIPELINE_SOURCE == "merge_request_event"\'');
+            process.exitCode = 1;
+            return;
+        }
+        if (!token) {
+            console.error('[PRGuard] ❌ GITLAB_TOKEN not set.');
+            console.error('[PRGuard] Create a Project or Personal Access Token with "api" scope,');
+            console.error('[PRGuard] then add it as a CI/CD variable: Settings → CI/CD → Variables');
+            process.exitCode = 1;
+            return;
+        }
+        if (!projectId || !serverUrl) {
+            console.error('[PRGuard] ❌ CI_PROJECT_ID or CI_SERVER_URL not available.');
+            console.error('[PRGuard] These are normally auto-injected by GitLab CI.');
+            process.exitCode = 1;
+            return;
+        }
+        // Parse configuration from environment variables
+        const config = (0, schema_1.buildConfigFromEnv)();
+        // Create GitLab adapter
+        const adapter = new gitlab_1.GitLabAdapter({
+            token,
+            gitlabUrl: serverUrl,
+            projectId,
+            mrIid,
+        });
+        // Parse options from environment variables
+        const env = (name, fallback = '') => process.env[`PRGUARD_${name}`] || fallback;
+        // Run PRGuard with adapter
+        await (0, runner_1.runPRGuard)(adapter, config, {
+            verifyImports: env('VERIFY_IMPORTS') !== 'false',
+            checkCodeStyle: env('CHECK_CODE_STYLE') !== 'false',
+            checkPrHistory: env('CHECK_PR_HISTORY') !== 'false',
+            checkMultiPr: env('CHECK_MULTI_PR') !== 'false',
+            maxReposPerDay: parseInt(env('MAX_REPOS_PER_DAY', '10')),
+            inlineReview: env('INLINE_REVIEW') !== 'false',
+        });
+    }
+    catch (error) {
+        console.error(`[PRGuard] ❌ Fatal error: ${error instanceof Error ? error.message : error}`);
+        process.exitCode = 1;
+    }
+}
+run();
+
+})();
+
+module.exports = __webpack_exports__;
 /******/ })()
 ;
 //# sourceMappingURL=index.js.map

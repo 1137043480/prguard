@@ -1,6 +1,6 @@
 # 🛡️ PRGuard
 
-**Free AI Code Reviewer for GitHub — line-level review, 40+ quality checks, and automatic blocking of low-quality PRs**
+**Free AI Code Reviewer for GitHub & GitLab — line-level review, 40+ quality checks, and automatic blocking of low-quality PRs**
 
 [![GitHub Action](https://img.shields.io/badge/GitHub-Action-blue?logo=github)](https://github.com/1137043480/PRGuard)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -182,6 +182,77 @@ jobs:
 ### Step 3: Done!
 
 Next time someone opens a PR, PRGuard runs automatically within 30 seconds.
+
+---
+
+## 🦊 GitLab CI/CD Support
+
+PRGuard also works with **GitLab** (including self-hosted instances). All 40+ quality checks and AI code review features are fully supported.
+
+### Setup
+
+**1. Create a GitLab API Token**
+
+Go to **User Settings → Access Tokens** (or **Project Settings → Access Tokens**) and create a token with `api` scope.
+
+**2. Add Token as CI/CD Variable**
+
+Go to your project's **Settings → CI/CD → Variables** and add:
+- Key: `GITLAB_TOKEN`, Value: your token, **Masked**: ✅
+
+**3. Add PRGuard dist to your repo**
+
+Download `dist-gitlab/` from [GitHub Releases](https://github.com/1137043480/PRGuard/releases) and place it in your repository root.
+
+**4. Add to `.gitlab-ci.yml`**
+
+```yaml
+prguard:
+  stage: test
+  image: node:20-alpine
+  script:
+    - node dist-gitlab/index.js
+  variables:
+    PRGUARD_MODE: "rules"  # or "ai" with PRGUARD_AI_API_KEY
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+```
+
+### GitLab AI Mode
+
+```yaml
+prguard:
+  stage: test
+  image: node:20-alpine
+  script:
+    - node dist-gitlab/index.js
+  variables:
+    PRGUARD_MODE: "ai"
+    PRGUARD_AI_PROVIDER: "openai"
+    PRGUARD_AI_API_KEY: $OPENAI_API_KEY
+    PRGUARD_AI_MODEL: "gpt-5"
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+```
+
+### GitLab Configuration (Environment Variables)
+
+All settings are configured via `PRGUARD_` prefixed environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PRGUARD_MODE` | `rules` | `rules` (free) or `ai` |
+| `PRGUARD_MAX_FAILURES` | `4` | Max check failures before flagging |
+| `PRGUARD_MIN_SCORE` | `40` | Minimum quality score (0-100) |
+| `PRGUARD_CLOSE_MR` | `false` | Auto-close failing MRs |
+| `PRGUARD_ADD_LABEL` | `needs-review` | Label for failing MRs |
+| `PRGUARD_AI_PROVIDER` | `openai` | AI provider |
+| `PRGUARD_AI_API_KEY` | — | API key for AI mode |
+| `PRGUARD_AI_MODEL` | `gpt-4o-mini` | AI model name |
+
+> See [`.gitlab-ci.example.yml`](./.gitlab-ci.example.yml) for a complete example with all options.
+
+> ⚠️ **Note:** gitlab.com free accounts require [identity verification](https://docs.gitlab.com/ee/ci/pipelines/settings.html) to use shared runners. **Self-hosted GitLab instances** (company private servers) have their own runners and work without any restrictions.
 
 ---
 
