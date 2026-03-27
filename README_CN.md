@@ -319,6 +319,10 @@ jobs:
 
 请查看 [CONTRIBUTING.md](./CONTRIBUTING.md) 了解贡献指南。
 
+## 🔗 友链
+
+学AI，上L站！[https://linux.do/](https://linux.do/)
+
 ## 📄 许可证
 
 MIT © [1137043480](https://github.com/1137043480)

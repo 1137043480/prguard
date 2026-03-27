@@ -319,6 +319,10 @@ In addition, PRGuard posts:
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
 
+## 🔗 Links
+
+学AI，上L站！[https://linux.do/](https://linux.do/)
+
 ## 📄 License
 
 MIT © [1137043480](https://github.com/1137043480)
